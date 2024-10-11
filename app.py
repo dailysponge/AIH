@@ -1,4 +1,4 @@
-from commands.commands import start
+from commands.commands import start, add_friend, show_leaderboard, notify_friends, handle_user_message, handle_user_image
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
@@ -7,6 +7,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 from dotenv import load_dotenv
 import os
@@ -19,7 +21,28 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 app = FastAPI()
 telegram_app = Application.builder().token(TOKEN).build()
 
-telegram_app.add_handler(CommandHandler('start', start))
+user_data = {}  # Move this here, after all imports
+
+# Update these lines to pass user_data
+telegram_app.add_handler(CommandHandler(
+    'start', lambda update, context: start(update, context, user_data)))
+telegram_app.add_handler(CommandHandler(
+    'add_friend', lambda update, context: add_friend(update, context, user_data)))
+telegram_app.add_handler(CommandHandler(
+    'leaderboard', lambda update, context: show_leaderboard(update, context, user_data)))
+telegram_app.add_handler(CommandHandler(
+    'notify_friends', lambda update, context: notify_friends(update, context, user_data)))
+
+# Update this line to handle both text and photo messages
+telegram_app.add_handler(MessageHandler(
+    filters.TEXT,
+    lambda update, context: handle_user_message(update, context, user_data)
+))
+
+telegram_app.add_handler(MessageHandler(
+    filters.PHOTO,
+    lambda update, context: handle_user_image(update, context, user_data)
+))
 
 
 @ app.on_event("startup")
