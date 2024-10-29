@@ -53,7 +53,7 @@ async def on_startup():
 
     # Set up the webhook
     # Replace 'your-domain.com' with your actual domain and ensure HTTPS is set up
-    webhook_url = "https://e2f3-220-255-223-18.ngrok-free.app/webhook"
+    webhook_url = "https://8b59-220-255-223-18.ngrok-free.app/webhook"
     await telegram_app.bot.set_webhook(url=webhook_url)
 
     # Start the bot (without polling)

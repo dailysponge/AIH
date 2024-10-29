@@ -34,10 +34,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: d
             'points': 0,
             'friends': [],
             'last_activity': datetime.datetime.now(),
-            'personality': 'curious',
+            'personality': "Energetic, Adventurous, Outdoorsy, Lively, Dynamic, Bold, Active, Resilient, Fearless, Enthusiastic, Curious, Nature-loving",
             'telegram_id': user_id,
             'handle': update.effective_user.username,
+            'chat_history': []
         }
+        print(f"\n[DEBUG] Initialized chat history for user {user_id}")
 
     print("start")
     user = update.effective_user
@@ -100,7 +102,7 @@ async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     leaderboard_message = "🏆 *Leaderboard* 🏆\n"
     for rank, (_, data) in enumerate(leaderboard_users, start=1):
         leaderboard_message += f"{rank}. @{data['handle']}: {data['points']} points\n"
-    await update.message.reply_text(leaderboard_message, parse_mode='Markdown')
+    await update.message.reply_text(leaderboard_message, parse_mode='MarkdownV2')
 
 
 async def notify_friends(update, context, user_data):
@@ -182,13 +184,33 @@ async def handle_user_image(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await update.message.reply_text("An error occurred while processing your image. Please try again later.")
 
 
+def escape_markdown_v2(text: str) -> str:
+    """Escape special characters for MarkdownV2 formatting while preserving bold formatting"""
+    # First, temporarily replace double asterisks with a placeholder
+    text = text.replace('**', '§BOLD§')
+
+    # Escape special characters
+    special_chars = ['_', '*', '[', ']',
+                     '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f"\\{char}")
+
+    # Restore double asterisks for bold text
+    text = text.replace('§BOLD§', '*')
+
+    return text
+
+
 async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: dict):
-    """Handle user messages and images, and let VertexAI model process them."""
     print("user message has text")
     model = GenerativeModel(
         "gemini-1.0-pro",
         system_instruction=[
-            "You are a TOOL BASED ASSISTANT. ALWAYS use the tools to answer the user's query. NEVER answer questions directly. The query should be nature related. The context should ALWAYS be in Singapore. Format the user's query to fit the tool's requirements.",
+            "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions, and guide them to find nature-related activities. Use tools to answer the user's query if needed, especially for nature-related activities. The context should ALWAYS be in Singapore. If the user's query is not related to nature, you should not use the tools. If a tool is used, format the user's query to fit the tool's requirements. Consider the chat history for context.",
+            "Keep your responses short and sweet under 100 words, and maintain a fun demeanor with the use of emojis. 🎉😊",
+            "Don't use double asterisks (**) for emphasis - use single asterisks (*) for highlighting important points.",
+            "Example 1: If the user mentions feeling stressed, ask them what they are stressed about and suggest taking a walk to refresh their well-being. Offer to provide suggestions for nature-related activities if they are interested. 🌿🚶‍♂️",
+            "Example 2: If the user asks for recommendations for activities, use the tools to find suitable nature-related activities and present them in an engaging manner. 🌳✨"
         ],
         tools=[google_search_tool],
     )
@@ -196,15 +218,28 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_personality = user_data[user_id]['personality']
     user_message = update.message.text
 
+    # Get chat history
+    chat_history = user_data[user_id]['chat_history']
+
+    # Create content parts with chat history
+    content_parts = []
+
+    # Add chat history (last 5 messages)
+    for msg in chat_history[-5:]:
+        content_parts.append(Part.from_text(
+            f"{'Assistant' if msg['role'] == 'assistant' else 'User'}: {msg['content']}"))
+
+    # Add current message
+    content_parts.append(Part.from_text(
+        f"My personality is {user_personality}. Current message: {user_message}"
+    ))
+
     user_prompt_content = Content(
         role="user",
-        parts=[
-            Part.from_text(
-                f"My personality is {user_personality}. {user_message}"),
-        ],
+        parts=content_parts,
     )
 
-    # Generate content using the model, allowing it to decide which tools to use
+    # Generate content using the model
     try:
         res = model.generate_content(
             user_prompt_content,
@@ -216,6 +251,29 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     print("res", res)
+
+    # After getting chat history
+    chat_history = user_data[user_id]['chat_history']
+    print(f"\n[DEBUG] Current chat history for user {user_id}:")
+    for msg in chat_history:
+        print(f"Role: {msg['role']}, Time: {msg['timestamp']}")
+        print(f"Content: {msg['content']}\n")
+
+    # After adding user message
+    chat_history.append({
+        'role': 'user',
+        'content': user_message,
+        'timestamp': datetime.datetime.now().isoformat()
+    })
+    print(f"\n[DEBUG] Added user message to chat history for user {user_id}")
+
+    print(
+        f"\n[DEBUG] Current chat history for user {user_id}: after adding user message")
+    for msg in chat_history:
+        print(f"Role: {msg['role']}, Time: {msg['timestamp']}")
+        print(f"Content: {msg['content']}\n")
+
+    response_text = None
     # Extract the response and function calls
     response_content = res.candidates[0].content
     function_calls = res.candidates[0].function_calls
@@ -274,7 +332,8 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 )
                             ],
                         )
-                        await update.message.reply_text(response.text)
+                        response_text = response.text
+                        # await update.message.reply_text(response.text)
                     except Exception as e:
                         print(f"Error handling google_search: {e}")
                         await update.message.reply_text("An error occurred while processing the search results.")
@@ -284,4 +343,33 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await update.message.reply_text("No tool calls detected.")
     else:
         print("using LLM directly, not calling tool")
-        await update.message.reply_text(response_content.text)
+        response_text = response_content.text
+        # await update.message.reply_text(response_content.text)
+
+    # After adding assistant response
+    if response_text:
+        chat_history.append({
+            'role': 'assistant',
+            'content': response_text,
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        print(
+            f"\n[DEBUG] Added assistant response to chat history for user {user_id}")
+        print(f"Chat history length: {len(chat_history)}")
+
+        # Limit chat history to last 20 messages to prevent memory issues
+        if len(chat_history) > 20:
+            chat_history = chat_history[-20:]
+
+        user_data[user_id]['chat_history'] = chat_history
+
+        # Escape special characters before sending
+        escaped_response = escape_markdown_v2(response_text)
+        print(f"\n[DEBUG] Escaped response: {escaped_response}")  # Debug print
+
+        try:
+            await update.message.reply_text(escaped_response, parse_mode='MarkdownV2')
+        except Exception as e:
+            print(f"Error sending formatted message: {e}")
+            # Fallback to plain text if formatting fails
+            await update.message.reply_text(response_text, parse_mode=None)
