@@ -10,6 +10,8 @@ from telegram.ext import (
 from vertexai.generative_models import GenerativeModel, Part, Content, Image
 from google.cloud import aiplatform
 from tools.tools import activity_tool, google_search_tool
+from models.personality import Personality
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 load_dotenv()
 
@@ -25,29 +27,56 @@ model = GenerativeModel(
 )
 
 
+def get_weather():
+    """Fetch current weather data for Singapore using WeatherAPI"""
+    api_key = os.getenv('WEATHERAPI_KEY')
+    url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q=Singapore&aqi=no"
+
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'temp_c': data['current']['temp_c'],
+                'condition': data['current']['condition']['text'],
+                'humidity': data['current']['humidity'],
+                'is_day': data['current']['is_day'],
+                'precip_mm': data['current']['precip_mm']
+            }
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        return None
+
+
 # Update function signatures to accept user_data
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: dict):
-    """Send a welcome message and prompt for the personality quiz."""
+    """Send a welcome message and prompt for personality selection."""
     user_id = update.effective_user.id
     if user_id not in user_data:
         user_data[user_id] = {
             'points': 0,
             'friends': [],
             'last_activity': datetime.datetime.now(),
-            'personality': "Energetic, Adventurous, Outdoorsy, Lively, Dynamic, Bold, Active, Resilient, Fearless, Enthusiastic, Curious, Nature-loving",
+            'personality': None,  # Initialize as None
             'telegram_id': user_id,
             'handle': update.effective_user.username,
             'chat_history': []
         }
         print(f"\n[DEBUG] Initialized chat history for user {user_id}")
 
+    # Create keyboard with personality buttons
+    keyboard = [
+        [personality.display_name] for personality in Personality
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
     print("start")
     user = update.effective_user
     await update.message.reply_text(
         f"Hello {user.first_name}! 👋\n"
         "Welcome to the Nature Connect Bot.\n"
-        "Please take our personality quiz here: [Personality Quiz](https://your-quiz-link.com)\n",
-        parse_mode='Markdown'
+        "Please take our personality quiz here and select your personality (https://opinionstage.com/page/96a67cbb-583d-4213-b851-0059fca6cb52)\n",
+        reply_markup=reply_markup
     )
 
 
@@ -152,7 +181,7 @@ async def handle_user_image(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         model = GenerativeModel(
             "gemini-1.5-flash-002",
             system_instruction=[
-                "Analyze the image and provide a brief description of the picture in the context of nature in Singapore. Craft your response in a fun and engaging manner with the use of emojis and fun facts.",
+                "Analyze the image and provide a brief description of the picture in the context of nature in Singapore. Craft your response in a fun and engaging manner with a moderate use of emojis and fun facts.",
             ],
         )
         print("user message has photo")
@@ -202,15 +231,59 @@ def escape_markdown_v2(text: str) -> str:
 
 
 async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: dict):
+    user_id = update.effective_user.id
+    user_message = update.message.text
+
+    # Check if the message is a personality selection
+    if user_message in Personality.get_all_display_names():
+        try:
+            personality = Personality.from_display_name(user_message)
+            user_data[user_id]['personality'] = personality.traits_string
+
+            await update.message.reply_text(
+                personality.welcome_message,
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return
+        except ValueError:
+            await update.message.reply_text(
+                "Sorry, that's not a valid personality type. Please use the buttons to select your personality.",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[p.display_name] for p in Personality],
+                    one_time_keyboard=True
+                )
+            )
+            return
+
+    # If no personality is set, prompt user to select one
+    if user_id not in user_data or not user_data[user_id].get('personality'):
+        keyboard = [[p.display_name] for p in Personality]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        await update.message.reply_text(
+            "Please select your personality type first:",
+            reply_markup=reply_markup
+        )
+        return
+
+    # Continue with the existing message handling logic
     print("user message has text")
+    weather_data = get_weather()
+
     model = GenerativeModel(
         "gemini-1.0-pro",
         system_instruction=[
-            "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions, and guide them to find nature-related activities. Use tools to answer the user's query if needed, especially for nature-related activities. The context should ALWAYS be in Singapore. If the user's query is not related to nature, you should not use the tools. If a tool is used, format the user's query to fit the tool's requirements. Consider the chat history for context.",
-            "Keep your responses short and sweet under 100 words, and maintain a fun demeanor with the use of emojis. 🎉😊",
+            "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions, and guide them to find nature-related activities. Always answer in first person.",
+            "ALWAYS consider the user's personality when suggesting activities and adjust the suggestions accordingly. For example, if the user is a laid-back personality, suggest activities that are easy to do and do not require a lot of physical effort.",
+            "Use tools to answer the user's query if needed, especially for nature-related activities. The context should ALWAYS be in Singapore.",
+            "When suggesting activities, ALWAYS consider the current weather conditions provided:",
+            f"Temperature: {weather_data['temp_c']}°C",
+            f"Condition: {weather_data['condition']}",
+            f"Precipitation: {weather_data['precip_mm']}mm",
+            f"Time of day: {'Day' if weather_data['is_day'] else 'Night'}",
+            "ALWAYS keep your responses short, concise and well-formatted under 100 words, and maintain a fun demeanor with the moderate use of emojis. 🎉😊",
             "Don't use double asterisks (**) for emphasis - use single asterisks (*) for highlighting important points.",
             "Example 1: If the user mentions feeling stressed, ask them what they are stressed about and suggest taking a walk to refresh their well-being. Offer to provide suggestions for nature-related activities if they are interested. 🌿🚶‍♂️",
-            "Example 2: If the user asks for recommendations for activities, use the tools to find suitable nature-related activities and present them in an engaging manner. 🌳✨"
+            "Example 2: If the user asks for recommendations for activities, use the tools to find suitable nature-related activities and present them in an engaging manner, considering the current weather conditions. 🌳✨"
         ],
         tools=[google_search_tool],
     )
@@ -344,13 +417,16 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         print("using LLM directly, not calling tool")
         response_text = response_content.text
-        # await update.message.reply_text(response_content.text)
+        # Remove "Assistant: " prefix if it exists
+        response_text = response_text.replace("Assistant: ", "")
 
     # After adding assistant response
     if response_text:
+        # Clean the response text before adding to chat history
+        cleaned_response = response_text.replace("Assistant: ", "")
         chat_history.append({
             'role': 'assistant',
-            'content': response_text,
+            'content': cleaned_response,
             'timestamp': datetime.datetime.now().isoformat()
         })
         print(
@@ -364,7 +440,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_data[user_id]['chat_history'] = chat_history
 
         # Escape special characters before sending
-        escaped_response = escape_markdown_v2(response_text)
+        escaped_response = escape_markdown_v2(cleaned_response)
         print(f"\n[DEBUG] Escaped response: {escaped_response}")  # Debug print
 
         try:
@@ -372,4 +448,74 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print(f"Error sending formatted message: {e}")
             # Fallback to plain text if formatting fails
-            await update.message.reply_text(response_text, parse_mode=None)
+            await update.message.reply_text(cleaned_response, parse_mode=None)
+
+
+async def handle_personality_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: dict):
+    """Handle the personality selection from the user."""
+    user_id = update.effective_user.id
+    selected_personality = update.message.text
+
+    # Personality-specific welcome messages
+    welcome_messages = {
+        "Adventurous Andy": (
+            "🏃‍♂️ Perfect choice for an adventure seeker!\n\n"
+            "I'm here to help you discover exciting outdoor activities and nature spots in Singapore. "
+            "Whether you're looking for hiking trails, water sports, or adrenaline-pumping adventures, "
+            "I've got you covered!\n\n"
+            "How can I help you start your next adventure today? 🌿🗺️"
+        ),
+        "Spontaneous Sammy": (
+            "🎯 Ah, a free spirit! Love it!\n\n"
+            "Ready to discover some spontaneous nature activities? "
+            "I can suggest quick getaways and last-minute nature spots that match your flexible style.\n\n"
+            "What kind of adventure are you up for today? 🌳✨"
+        ),
+        "Planet Pete": (
+            "🌍 Welcome, fellow earth guardian!\n\n"
+            "I'm here to help you connect with nature while protecting our environment. "
+            "From eco-friendly activities to conservation efforts, "
+            "let's make a positive impact together.\n\n"
+            "What environmental interests would you like to explore today? 🌱"
+        ),
+        "Chill Charlie": (
+            "😌 Perfect choice for a relaxed nature lover!\n\n"
+            "I know all the peaceful spots and calming nature activities in Singapore. "
+            "From quiet gardens to serene water spots, "
+            "we'll find your perfect zen moment.\n\n"
+            "How would you like to unwind in nature today? 🍃"
+        ),
+        "Gamer George": (
+            "🎮 Level up your nature experience!\n\n"
+            "I can help you find outdoor activities that match your strategic mindset. "
+            "Think of it as a real-world adventure game with achievements to unlock!\n\n"
+            "Ready to start your nature quest? What's your first mission? 🎯"
+        ),
+        "Trendy Tiara": (
+            "📱 Welcome to your nature-meets-social journey!\n\n"
+            "I'll help you discover Instagram-worthy nature spots and trending outdoor activities. "
+            "Let's find the perfect blend of nature and social sharing.\n\n"
+            "What kind of trendy nature experience are you looking for today? 🌺"
+        )
+    }
+
+    try:
+        personality = Personality.from_display_name(selected_personality)
+        user_data[user_id]['personality'] = personality.traits_string
+
+        # Send the personality-specific welcome message
+        welcome_message = welcome_messages.get(selected_personality,
+                                               "How can I help you today? Feel free to ask me about nature activities in Singapore! 🌿")
+
+        await update.message.reply_text(
+            welcome_message,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "Sorry, that's not a valid personality type. Please use the buttons to select your personality.",
+            reply_markup=ReplyKeyboardMarkup(
+                [[p.display_name] for p in Personality],
+                one_time_keyboard=True
+            )
+        )

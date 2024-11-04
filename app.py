@@ -2,7 +2,7 @@ from commands.commands import start, add_friend, show_leaderboard, notify_friend
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,8 +13,9 @@ from telegram.ext import (
 from dotenv import load_dotenv
 import os
 import uvicorn
+from models.personality import Personality
 
-load_dotenv()
+load_dotenv(override=True)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
@@ -53,7 +54,9 @@ async def on_startup():
 
     # Set up the webhook
     # Replace 'your-domain.com' with your actual domain and ensure HTTPS is set up
-    webhook_url = "https://8b59-220-255-223-18.ngrok-free.app/webhook"
+    ngrok_url = os.getenv("WEBHOOK_URL")
+    webhook_url = f"{ngrok_url}/webhook"
+    print("webhook", webhook_url)
     await telegram_app.bot.set_webhook(url=webhook_url)
 
     # Start the bot (without polling)
