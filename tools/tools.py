@@ -35,3 +35,21 @@ google_search_tool = Tool(
 activity_tool = Tool(
     function_declarations=[suggest_activities_function],
 )
+
+feedback_function = FunctionDeclaration(
+    name="handle_feedback",
+    description="Process user feedback about suggested activities and check if activities were completed.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "is_feedback": {
+                "type": "boolean",
+                "description": "Whether the user's message appears to be feedback about a suggested activity."
+            },
+        }
+    },
+)
+
+feedback_tool = Tool(
+    function_declarations=[feedback_function],
+)

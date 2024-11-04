@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 from vertexai.generative_models import GenerativeModel, Part, Content, Image
 from google.cloud import aiplatform
-from tools.tools import activity_tool, google_search_tool
+from tools.tools import activity_tool, google_search_tool, feedback_tool
 from models.personality import Personality
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
@@ -122,15 +122,45 @@ async def add_friend(update: Update, context: ContextTypes.DEFAULT_TYPE, user_da
 
 
 async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data: dict):
-    """Show the leaderboard of users based on points. Return None if no friends are added."""
-    if not user_data[update.effective_user.id]['friends']:
-        await update.message.reply_text("You don't have any friends yet. Add some friends to see the leaderboard.")
-        return
-    leaderboard_users = sorted(
-        user_data.items(), key=lambda x: x[1]['points'], reverse=True)
-    leaderboard_message = "🏆 *Leaderboard* 🏆\n"
-    for rank, (_, data) in enumerate(leaderboard_users, start=1):
-        leaderboard_message += f"{rank}. @{data['handle']}: {data['points']} points\n"
+    """Show the leaderboard of all users and their points."""
+    # Sort users by points in descending order
+    sorted_users = sorted(
+        user_data.items(),
+        key=lambda x: x[1]['points'],
+        reverse=True
+    )
+
+    # Create leaderboard message with proper escaping
+    leaderboard_lines = ["🏆 *Nature Connect Leaderboard* 🏆\n"]
+
+    for i, (user_id, data) in enumerate(sorted_users, 1):
+        # Escape special characters in handle/points
+        handle = data.get('handle', 'Anonymous')
+        if handle:
+            # Escape special characters: . ! - ( )
+            handle = handle.replace('.', '\\.').replace('!', '\\!').replace(
+                '-', '\\-').replace('(', '\\(').replace(')', '\\)')
+        points = str(data.get('points', 0))
+
+        # Format the line with position emoji
+        if i == 1:
+            emoji = "🥇"
+        elif i == 2:
+            emoji = "🥈"
+        elif i == 3:
+            emoji = "🥉"
+        else:
+            emoji = "🌟"
+
+        line = f"{emoji} {i}\\. @{handle}: {points} points\n"
+        leaderboard_lines.append(line)
+
+    if not leaderboard_lines[1:]:  # If no users except header
+        leaderboard_lines.append(
+            "No scores yet\\! Start completing activities to earn points\\! 🌿")
+
+    leaderboard_message = "".join(leaderboard_lines)
+
     await update.message.reply_text(leaderboard_message, parse_mode='MarkdownV2')
 
 
@@ -273,7 +303,9 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         "gemini-1.0-pro",
         system_instruction=[
             "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions, and guide them to find nature-related activities. Always answer in first person.",
-            "ALWAYS consider the user's personality when suggesting activities and adjust the suggestions accordingly. For example, if the user is a laid-back personality, suggest activities that are easy to do and do not require a lot of physical effort.",
+            "ALWAYS consider the user's personality when suggesting activities and adjust the suggestions accordingly.",
+            "After suggesting activities, ALWAYS ask for feedback about the suggestions.",
+            "If the user provides feedback or or has said that they completed an activity, you MUST ALWAYS use the handle_feedback tool to process it.",
             "Use tools to answer the user's query if needed, especially for nature-related activities. The context should ALWAYS be in Singapore.",
             "When suggesting activities, ALWAYS consider the current weather conditions provided:",
             f"Temperature: {weather_data['temp_c']}°C",
@@ -282,10 +314,8 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Time of day: {'Day' if weather_data['is_day'] else 'Night'}",
             "ALWAYS keep your responses short, concise and well-formatted under 100 words, and maintain a fun demeanor with the moderate use of emojis. 🎉😊",
             "Don't use double asterisks (**) for emphasis - use single asterisks (*) for highlighting important points.",
-            "Example 1: If the user mentions feeling stressed, ask them what they are stressed about and suggest taking a walk to refresh their well-being. Offer to provide suggestions for nature-related activities if they are interested. 🌿🚶‍♂️",
-            "Example 2: If the user asks for recommendations for activities, use the tools to find suitable nature-related activities and present them in an engaging manner, considering the current weather conditions. 🌳✨"
         ],
-        tools=[google_search_tool],
+        tools=[google_search_tool, feedback_tool],
     )
     user_id = update.effective_user.id
     user_personality = user_data[user_id]['personality']
@@ -354,10 +384,19 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if function_calls:
         for function_call in function_calls:
-            if function_call.name == "suggest_activities":
+            if function_call.name == "handle_feedback":
+                function_args = function_call.args
+                if function_args.get("is_feedback", False):
+                    # Award points for feedback
+                    user_data[user_id]['points'] += 10
+
+                    response_text = "Thank you for your feedback! 🌟 You've earned 10 points for completing and activity and sharing your thoughts! 🎉"
+                    await update.message.reply_text(response_text)
+                    return
+
+            elif function_call.name == "suggest_activities":
                 function_args = function_call.args
                 function_args["personality"] = user_personality
-                # Handle the suggest_activities tool
                 try:
                     response = model.generate_content(
                         [
@@ -373,10 +412,13 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                             )
                         ]
                     )
-                    await update.message.reply_text(response.text)
+                    response_text = response.text + \
+                        "\n\nHow do you feel about these suggestions? I'd love to hear your feedback! 🤗"
+                    await update.message.reply_text(response_text)
                 except Exception as e:
                     print(f"Error handling suggest_activities: {e}")
                     await update.message.reply_text("An error occurred while suggesting activities.")
+
             elif function_call.name == "question_answer_tool":
                 function_args = function_call.args
                 search_results = google_search(function_args["query"])
@@ -419,6 +461,17 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         response_text = response_content.text
         # Remove "Assistant: " prefix if it exists
         response_text = response_text.replace("Assistant: ", "")
+
+        # Check for activity completion
+        is_activity_completed = await check_activity_completion(user_message)
+        print("is_activity_completed", is_activity_completed)
+        if is_activity_completed:
+            print("activity completed")
+            # Award points for completing activity
+            user_data[user_id]['points'] += 20
+            # Notify friends
+            await notify_friends(update, context, user_data)
+            response_text += "\n\n🎉 Congratulations on completing the activity! You've earned 20 points! 🌟"
 
     # After adding assistant response
     if response_text:
@@ -519,3 +572,29 @@ async def handle_personality_selection(update: Update, context: ContextTypes.DEF
                 one_time_keyboard=True
             )
         )
+
+
+async def check_activity_completion(user_message: str) -> bool:
+    """Check if user's message indicates activity completion using LLM."""
+    activity_check_model = GenerativeModel(
+        "gemini-1.0-pro",
+        system_instruction=[
+            "You are an activity completion detector. Your ONLY job is to determine if the user's message indicates they have completed a nature-related activity.",
+            "If the message indicates activity completion, respond ONLY with 'activity completed'.",
+            "If not, respond ONLY with 'no activity'.",
+            "Example completions:",
+            "- 'I just finished hiking at MacRitchie!' → 'activity completed'",
+            "- 'The weather is nice today' → 'no activity'",
+            "- 'Had a great time at the Botanic Gardens!' → 'activity completed'",
+            "- 'Can you suggest something to do?' → 'no activity'",
+            "- 'I just listened to nature sounds online and it helped calm me down alot' → 'activity completed'"
+        ]
+    )
+
+    try:
+        print("THIS IS THE USER MESSAGE", user_message)
+        response = activity_check_model.generate_content(user_message)
+        return response.text.strip().lower() == "activity completed"
+    except Exception as e:
+        print(f"Error checking activity completion: {e}")
+        return False

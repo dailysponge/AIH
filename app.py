@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 import os
 import uvicorn
 from models.personality import Personality
-
+from commands.commands import check_activity_completion
 load_dotenv(override=True)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -63,6 +63,8 @@ async def on_startup():
     await telegram_app.start()
     print("webhook", webhook_url)
     print("Bot started and webhook set.")
+    res = await check_activity_completion("I just completed the night cycle and it felt really good. Thank you")
+    print("res", res)
 
 
 @ app.on_event("shutdown")
