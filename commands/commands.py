@@ -125,24 +125,25 @@ async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     """Show the leaderboard of all users and their points."""
     # Sort users by points in descending order
     sorted_users = sorted(
-        user_data.items(),
+        [(uid, data) for uid, data in user_data.items()
+         if isinstance(uid, int)],  # Only include user IDs
         key=lambda x: x[1]['points'],
         reverse=True
     )
 
-    # Create leaderboard message with proper escaping
-    leaderboard_lines = ["🏆 *Nature Connect Leaderboard* 🏆\n"]
+    # Create leaderboard message
+    leaderboard_lines = ["🏆 Nature Connect Leaderboard 🏆\n"]
 
     for i, (user_id, data) in enumerate(sorted_users, 1):
-        # Escape special characters in handle/points
+        # Get handle or default to Anonymous
         handle = data.get('handle', 'Anonymous')
-        if handle:
-            # Escape special characters: . ! - ( )
-            handle = handle.replace('.', '\\.').replace('!', '\\!').replace(
-                '-', '\\-').replace('(', '\\(').replace(')', '\\)')
-        points = str(data.get('points', 0))
+        if not handle:
+            handle = 'Anonymous'
 
-        # Format the line with position emoji
+        # Format points
+        points = data.get('points', 0)
+
+        # Add position emoji
         if i == 1:
             emoji = "🥇"
         elif i == 2:
@@ -152,16 +153,18 @@ async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         else:
             emoji = "🌟"
 
-        line = f"{emoji} {i}\\. @{handle}: {points} points\n"
+        # Format line without markdown
+        line = f"{emoji} {i}. @{handle}: {points} points\n"
         leaderboard_lines.append(line)
 
     if not leaderboard_lines[1:]:  # If no users except header
         leaderboard_lines.append(
-            "No scores yet\\! Start completing activities to earn points\\! 🌿")
+            "No scores yet! Start completing activities to earn points! 🌿")
 
     leaderboard_message = "".join(leaderboard_lines)
 
-    await update.message.reply_text(leaderboard_message, parse_mode='MarkdownV2')
+    # Send without markdown parsing
+    await update.message.reply_text(leaderboard_message)
 
 
 async def notify_friends(update, context, user_data):
@@ -302,7 +305,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     model = GenerativeModel(
         "gemini-1.0-pro",
         system_instruction=[
-            "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions, and guide them to find nature-related activities. Always answer in first person.",
+            "You are a TOOL BASED nature-related ASSISTANT. Engage in brief, fun conversations with the user to understand their needs and emotions. Ask them more questions if needed to understand their current emotions. You should guide them to find nature-related activities, but do not be too pushy. Always answer in first person.",
             "ALWAYS consider the user's personality when suggesting activities and adjust the suggestions accordingly.",
             "After suggesting activities, ALWAYS ask for feedback about the suggestions.",
             "If the user provides feedback or or has said that they completed an activity, you MUST ALWAYS use the handle_feedback tool to process it.",
@@ -312,7 +315,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Condition: {weather_data['condition']}",
             f"Precipitation: {weather_data['precip_mm']}mm",
             f"Time of day: {'Day' if weather_data['is_day'] else 'Night'}",
-            "ALWAYS keep your responses short, concise and well-formatted under 100 words, and maintain a fun demeanor with the moderate use of emojis. 🎉😊",
+            "ALWAYS keep your responses VERY short, unless the user is asking for more information, concise and well-formatted under 100 words, and maintain a fun demeanor with the mild use of emojis. 🎉😊",
             "Don't use double asterisks (**) for emphasis - use single asterisks (*) for highlighting important points.",
         ],
         tools=[google_search_tool, feedback_tool],

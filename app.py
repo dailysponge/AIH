@@ -24,6 +24,18 @@ telegram_app = Application.builder().token(TOKEN).build()
 
 user_data = {}  # Move this here, after all imports
 
+# Set up bot commands
+
+
+async def set_bot_commands():
+    """Set up the bot commands that will be shown to users."""
+    commands = [
+        ("start", "Start the bot and select your personality"),
+        ("add_friend", "Add a friend to get notifications about their activities"),
+        ("leaderboard", "View the points leaderboard"),
+    ]
+    await telegram_app.bot.set_my_commands(commands)
+
 # Update these lines to pass user_data
 telegram_app.add_handler(CommandHandler(
     'start', lambda update, context: start(update, context, user_data)))
@@ -46,25 +58,25 @@ telegram_app.add_handler(MessageHandler(
 ))
 
 
-@ app.on_event("startup")
+@app.on_event("startup")
 async def on_startup():
     """Initialize the bot and set up the webhook."""
     # Initialize the bot application
     await telegram_app.initialize()
 
+    # Set up bot commands
+    await set_bot_commands()
+
     # Set up the webhook
-    # Replace 'your-domain.com' with your actual domain and ensure HTTPS is set up
     ngrok_url = os.getenv("WEBHOOK_URL")
     webhook_url = f"{ngrok_url}/webhook"
     print("webhook", webhook_url)
     await telegram_app.bot.set_webhook(url=webhook_url)
 
-    # Start the bot (without polling)
+    # Start the bot
     await telegram_app.start()
     print("webhook", webhook_url)
     print("Bot started and webhook set.")
-    res = await check_activity_completion("I just completed the night cycle and it felt really good. Thank you")
-    print("res", res)
 
 
 @ app.on_event("shutdown")
