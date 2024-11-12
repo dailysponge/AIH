@@ -123,5 +123,5 @@
 
 <div align="center">
   <h2>📱 Try it Now</h2>
-  <p>Start your nature journey today: <a href="https://t.me/your_bot_username">@NatureConnectBot</a></p>
+  <p>Start your nature journey today: <a href="https://t.me/EcoBuddy_bot">@EcoBuddy_bot</a></p>
 </div>
