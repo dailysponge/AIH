@@ -28,8 +28,7 @@
   <h3>1. Clone the Repository</h3>
   
   ```bash
-  git clone https://github.com/yourusername/nature-connect-bot.git
-  cd nature-connect-bot
+  git clone https://github.com/dailysponge/AIH.git
   ```
 
   <h3>2. Install Dependencies</h3>
@@ -53,11 +52,11 @@ WEATHERAPI_KEY=your_weather_api_key
 
 GOOGLE_CLOUD_PROJECT=your_project_id
 
-# Google Custom Search Engine ID, obtain from https://developers.google.com/custom-search/v1/overview
+# Google Custom Search Engine ID, obtain from https://programmablesearchengine.google.com/u/7/controlpanel/all
 
 GOOGLE_CSE_ID=your_search_engine_id
 
-# Google API Key
+# Google API Key, obtain from https://developers.google.com/custom-search/v1/overview
 
 GOOGLE_API_KEY=your_google_api_key
 
