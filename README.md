@@ -15,6 +15,111 @@
 </div>
 
 <div>
+  <h2>🔧 Setup Instructions</h2>
+  
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>Python 3.8 or higher</li>
+    <li>Telegram account</li>
+    <li>Google Cloud account</li>
+    <li>ngrok account</li>
+  </ul>
+
+  <h3>1. Clone the Repository</h3>
+  
+  ```bash
+  git clone https://github.com/yourusername/nature-connect-bot.git
+  cd nature-connect-bot
+  ```
+
+  <h3>2. Install Dependencies</h3>
+  
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+  <h3>3. Set Up Environment Variables</h3>
+  Create a .env file in the root directory:
+  
+  ```bash
+  # Telegram Bot Token (from @BotFather)
+  TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+
+# WeatherAPI Key (from weatherapi.com)
+
+WEATHERAPI_KEY=your_weather_api_key
+
+# Google Cloud Project ID
+
+GOOGLE_CLOUD_PROJECT=your_project_id
+
+# Google Custom Search Engine ID, obtain from https://developers.google.com/custom-search/v1/overview
+
+GOOGLE_CSE_ID=your_search_engine_id
+
+# Google API Key
+
+GOOGLE_API_KEY=your_google_api_key
+
+# Webhook URL (from ngrok)
+
+WEBHOOK_URL=your_ngrok_url
+
+````
+
+<h3>4. Set Up External Services</h3>
+<ol>
+  <li><b>Telegram Bot:</b>
+    <ul>
+      <li>Create a new bot with @BotFather on Telegram</li>
+      <li>Save the bot token in your .env file</li>
+    </ul>
+  </li>
+  <li><b>Weather API:</b>
+    <ul>
+      <li>Sign up at weatherapi.com</li>
+      <li>Generate an API key</li>
+      <li>Add the key to your .env file</li>
+    </ul>
+  </li>
+  <li><b>Google Cloud:</b>
+    <ul>
+      <li>Create a new project in Google Cloud Console</li>
+      <li>Enable Vertex AI API</li>
+      <li>Create service account credentials</li>
+      <li>Download the JSON key file</li>
+      <li>Set up Custom Search Engine and get the CSE ID</li>
+    </ul>
+  </li>
+  <li><b>ngrok:</b>
+    <ul>
+      <li>Install ngrok</li>
+      <li>Start ngrok: <code>ngrok http 8000</code></li>
+      <li>Copy the HTTPS URL to your .env file</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>5. Initialize Google Cloud</h3>
+
+```
+# Set Google Cloud credentials
+````
+
+  <h3>6. Run the Bot</h3>
+  ```
+  python -m app
+  ```
+
+  <h3>7. Verify Setup</h3>
+  <ul>
+    <li>Open Telegram and search for your bot</li>
+    <li>Start a conversation with /start command</li>
+    <li>The bot should respond with a personality selection menu</li>
+  </ul>
+</div>
+
+<div>
   <h2>✨ Key Features</h2>
   
   <h3>🎭 Personality-Based Interaction</h3>
